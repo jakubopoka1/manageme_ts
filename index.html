@@ -10,12 +10,17 @@
 
 <body>
   <div id="app">
-    <h1>Projekty</h1>
-    <form id="ProjectForm">
-      <input type="text" placeholder="Nazwa projektu" id="name" required />
-      <input type="owner" placeholder="" id="name" required />
+    <h1>Tablica kanban</h1>
+
+    <form id="task-form">
+      <input type="text" name="title" placeholder="Nazwa projektu" required>
+      <textarea name="description" placeholder="Opis (opcjonalnie)" rows="3"></textarea>
+      <button type="submit">Dodaj</button>
     </form>
+
+    <div id="board"></div>
   </div>
+
   <script type="module" src="/src/main.ts"></script>
 </body>
 

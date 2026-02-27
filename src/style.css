@@ -1,96 +1,169 @@
 :root {
-	font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-	line-height: 1.5;
-	font-weight: 400;
-
-	color-scheme: light dark;
-	color: rgba(255, 255, 255, 0.87);
-	background-color: #242424;
-
-	font-synthesis: none;
-	text-rendering: optimizeLegibility;
-	-webkit-font-smoothing: antialiased;
-	-moz-osx-font-smoothing: grayscale;
+	font-family:
+		system-ui,
+		-apple-system,
+		Segoe UI,
+		Roboto,
+		Arial,
+		sans-serif;
 }
 
-a {
-	font-weight: 500;
-	color: #646cff;
-	text-decoration: inherit;
-}
-a:hover {
-	color: #535bf2;
+* {
+	box-sizing: border-box;
 }
 
 body {
 	margin: 0;
-	display: flex;
-	justify-content: center;
-	min-width: 320px;
-	min-height: 100vh;
-}
-
-h1 {
-	font-size: 3.2em;
-	line-height: 1.1;
+	padding: 24px;
+	background: #f6f7fb;
 }
 
 #app {
-	max-width: 1280px;
+	max-width: 1100px;
 	margin: 0 auto;
-	padding: 2rem;
-	text-align: center;
 }
 
-.logo {
-	height: 6em;
-	padding: 1.5em;
-	will-change: filter;
-	transition: filter 300ms;
-}
-.logo:hover {
-	filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vanilla:hover {
-	filter: drop-shadow(0 0 2em #3178c6aa);
+h1 {
+	margin: 0 0 16px;
 }
 
-.card {
-	padding: 2em;
+/* Formularz */
+#task-form {
+	display: grid;
+	grid-template-columns: 1fr 1fr auto;
+	gap: 12px;
+	align-items: start;
+	margin-bottom: 18px;
 }
 
-.read-the-docs {
-	color: #888;
+#task-form input,
+#task-form textarea,
+#task-form button,
+.task_actions select,
+.task_actions button {
+	font: inherit;
 }
 
-button {
-	border-radius: 8px;
-	border: 1px solid transparent;
-	padding: 0.6em 1.2em;
-	font-size: 1em;
-	font-weight: 500;
-	font-family: inherit;
-	background-color: #1a1a1a;
+#task-form input,
+#task-form textarea {
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid #d6d8e1;
+	border-radius: 10px;
+	background: white;
+	outline: none;
+}
+
+#task-form textarea {
+	resize: vertical;
+}
+
+#task-form button {
+	padding: 10px 14px;
+	border: 1px solid #d6d8e1;
+	border-radius: 10px;
+	background: white;
 	cursor: pointer;
-	transition: border-color 0.25s;
-}
-button:hover {
-	border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-	outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-	:root {
-		color: #213547;
-		background-color: #ffffff;
+#task-form button:hover {
+	filter: brightness(0.98);
+}
+
+/* Board */
+#board {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 14px;
+}
+
+.column {
+	background: white;
+	border: 1px solid #e3e5ee;
+	border-radius: 14px;
+	padding: 12px;
+	min-height: 200px;
+}
+
+.column h2 {
+	margin: 0 0 10px;
+	font-size: 16px;
+}
+
+.column_items {
+	display: grid;
+	gap: 10px;
+}
+
+/* Task card */
+.task {
+	border: 1px solid #e3e5ee;
+	border-radius: 12px;
+	padding: 10px;
+	background: #fff;
+}
+
+.task_title {
+	font-weight: 700;
+	margin-bottom: 6px;
+}
+
+.task_desc {
+	font-size: 14px;
+	opacity: 0.85;
+	margin-bottom: 10px;
+	white-space: pre-wrap;
+}
+
+.task_actions {
+	display: flex;
+	gap: 8px;
+	align-items: center;
+	justify-content: space-between;
+}
+
+.task_actions select {
+	flex: 1;
+	padding: 8px 10px;
+	border: 1px solid #d6d8e1;
+	border-radius: 10px;
+	background: white;
+}
+
+.task_actions button {
+	padding: 8px 10px;
+	border: 1px solid #d6d8e1;
+	border-radius: 10px;
+	background: white;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.task_actions button:hover {
+	filter: brightness(0.98);
+}
+
+/* Responsywność */
+@media (max-width: 900px) {
+	#task-form {
+		grid-template-columns: 1fr;
 	}
-	a:hover {
-		color: #747bff;
+
+	#board {
+		grid-template-columns: 1fr;
 	}
-	button {
-		background-color: #f9f9f9;
-	}
+}
+
+/* kolory kolumn */
+
+.column[data-status="todo"] {
+	background: #ff6060;
+}
+
+.column[data-status="doing"] {
+	background: #f3ff44;
+}
+
+.column[data-status="done"] {
+	background: #57a246;
 }
