@@ -1,9 +1,10 @@
-import type { Project, Story, User } from "./types";
+import type { Project, Story, Task, User } from "./types";
 
 type Database = {
 	users: User[];
 	projects: Project[];
 	stories: Story[];
+	tasks: Task[];
 	activeProjectId: string | null;
 	loggedUserId: string | null;
 };
@@ -14,20 +15,30 @@ export class ApiService {
 	private readDb(): Database {
 		const raw = localStorage.getItem(STORAGE_KEY);
 
-		if (!raw) {
-			const initialDb: Database = {
-				users: [],
-				projects: [],
-				stories: [],
-				activeProjectId: null,
-				loggedUserId: null,
-			};
+		const initialDb: Database = {
+			users: [],
+			projects: [],
+			stories: [],
+			tasks: [],
+			activeProjectId: null,
+			loggedUserId: null,
+		};
 
+		if (!raw) {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(initialDb));
 			return initialDb;
 		}
 
-		return JSON.parse(raw) as Database;
+		const parsed = JSON.parse(raw) as Partial<Database>;
+
+		return {
+			users: parsed.users ?? [],
+			projects: parsed.projects ?? [],
+			stories: parsed.stories ?? [],
+			tasks: parsed.tasks ?? [],
+			activeProjectId: parsed.activeProjectId ?? null,
+			loggedUserId: parsed.loggedUserId ?? null,
+		};
 	}
 
 	private writeDb(db: Database): void {
@@ -41,10 +52,25 @@ export class ApiService {
 			return;
 		}
 
-		const mockUser: User = {
+		const adminUser: User = {
 			id: crypto.randomUUID(),
-			firstName: "Jan",
-			lastName: "Kowalski",
+			firstName: "Johnny",
+			lastName: "Bravo",
+			role: "admin",
+		};
+
+		const developerUser: User = {
+			id: crypto.randomUUID(),
+			firstName: "Luke",
+			lastName: "Skywalker",
+			role: "developer",
+		};
+
+		const devopsUser: User = {
+			id: crypto.randomUUID(),
+			firstName: "Travis",
+			lastName: "Scott",
+			role: "devops",
 		};
 
 		const project1: Project = {
@@ -65,7 +91,7 @@ export class ApiService {
 			projectId: project1.id,
 			createdAt: new Date().toISOString(),
 			status: "todo",
-			ownerId: mockUser.id,
+			ownerId: adminUser.id,
 		};
 
 		const story2: Story = {
@@ -76,7 +102,7 @@ export class ApiService {
 			projectId: project1.id,
 			createdAt: new Date().toISOString(),
 			status: "doing",
-			ownerId: mockUser.id,
+			ownerId: adminUser.id,
 		};
 
 		const story3: Story = {
@@ -87,15 +113,58 @@ export class ApiService {
 			projectId: project2.id,
 			createdAt: new Date().toISOString(),
 			status: "done",
-			ownerId: mockUser.id,
+			ownerId: adminUser.id,
+		};
+
+		const task1: Task = {
+			id: crypto.randomUUID(),
+			name: "Przygotowanie formularza logowania",
+			description: "Frontend formularza logowania",
+			priority: "high",
+			storyId: story1.id,
+			estimatedHours: 8,
+			status: "todo",
+			createdAt: new Date().toISOString(),
+			startedAt: null,
+			completedAt: null,
+			assigneeId: null,
+		};
+
+		const task2: Task = {
+			id: crypto.randomUUID(),
+			name: "Konfiguracja pipeline CI",
+			description: "Przygotowanie pipeline dla projektu",
+			priority: "medium",
+			storyId: story2.id,
+			estimatedHours: 6,
+			status: "doing",
+			createdAt: new Date().toISOString(),
+			startedAt: new Date().toISOString(),
+			completedAt: null,
+			assigneeId: devopsUser.id,
+		};
+
+		const task3: Task = {
+			id: crypto.randomUUID(),
+			name: "Test koszyka zakupowego",
+			description: "Sprawdzenie poprawności dodawania produktów",
+			priority: "medium",
+			storyId: story3.id,
+			estimatedHours: 5,
+			status: "done",
+			createdAt: new Date().toISOString(),
+			startedAt: new Date().toISOString(),
+			completedAt: new Date().toISOString(),
+			assigneeId: developerUser.id,
 		};
 
 		const newDb: Database = {
-			users: [mockUser],
+			users: [adminUser, developerUser, devopsUser],
 			projects: [project1, project2],
 			stories: [story1, story2, story3],
+			tasks: [task1, task2, task3],
 			activeProjectId: project1.id,
-			loggedUserId: mockUser.id,
+			loggedUserId: adminUser.id,
 		};
 
 		this.writeDb(newDb);
@@ -104,6 +173,16 @@ export class ApiService {
 	getLoggedUser(): User | null {
 		const db = this.readDb();
 		return db.users.find((u) => u.id === db.loggedUserId) ?? null;
+	}
+
+	getUsers(): User[] {
+		return this.readDb().users;
+	}
+
+	getAssignableUsers(): User[] {
+		return this.readDb().users.filter(
+			(user) => user.role === "developer" || user.role === "devops",
+		);
 	}
 
 	getProjects(): Project[] {
@@ -128,6 +207,11 @@ export class ApiService {
 	getStoriesByProject(projectId: string): Story[] {
 		const db = this.readDb();
 		return db.stories.filter((story) => story.projectId === projectId);
+	}
+
+	getStoryById(storyId: string): Story | null {
+		const db = this.readDb();
+		return db.stories.find((story) => story.id === storyId) ?? null;
 	}
 
 	createStory(story: Omit<Story, "id" | "createdAt">): Story {
@@ -158,11 +242,62 @@ export class ApiService {
 	deleteStory(storyId: string): void {
 		const db = this.readDb();
 		db.stories = db.stories.filter((story) => story.id !== storyId);
+		db.tasks = db.tasks.filter((task) => task.storyId !== storyId);
 		this.writeDb(db);
 	}
 
-	getStoryById(storyId: string): Story | null {
+	getTasks(): Task[] {
+		return this.readDb().tasks;
+	}
+
+	getTaskById(taskId: string): Task | null {
 		const db = this.readDb();
-		return db.stories.find((story) => story.id === storyId) ?? null;
+		return db.tasks.find((task) => task.id === taskId) ?? null;
+	}
+
+	getTasksByStoryId(storyId: string): Task[] {
+		const db = this.readDb();
+		return db.tasks.filter((task) => task.storyId === storyId);
+	}
+
+	getTasksByProjectId(projectId: string): Task[] {
+		const db = this.readDb();
+
+		const storyIds = db.stories
+			.filter((story) => story.projectId === projectId)
+			.map((story) => story.id);
+
+		return db.tasks.filter((task) => storyIds.includes(task.storyId));
+	}
+
+	createTask(task: Omit<Task, "id" | "createdAt">): Task {
+		const db = this.readDb();
+
+		const newTask: Task = {
+			...task,
+			id: crypto.randomUUID(),
+			createdAt: new Date().toISOString(),
+		};
+
+		db.tasks.push(newTask);
+		this.writeDb(db);
+
+		return newTask;
+	}
+
+	updateTask(updatedTask: Task): void {
+		const db = this.readDb();
+
+		db.tasks = db.tasks.map((task) =>
+			task.id === updatedTask.id ? updatedTask : task,
+		);
+
+		this.writeDb(db);
+	}
+
+	deleteTask(taskId: string): void {
+		const db = this.readDb();
+		db.tasks = db.tasks.filter((task) => task.id !== taskId);
+		this.writeDb(db);
 	}
 }

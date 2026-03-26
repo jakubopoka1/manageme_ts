@@ -1,27 +1,42 @@
 import { ApiService } from "./api";
 import { renderApp } from "./render";
 import { StoryService } from "./story-service";
+import { TaskService } from "./task-service";
 import { UserSession } from "./user-session";
-import type { Story, StoryPriority, StoryStatus } from "./types";
+import type {
+	Story,
+	StoryPriority,
+	StoryStatus,
+	Task,
+	TaskPriority,
+} from "./types";
 
 const api = new ApiService();
 const userSession = new UserSession(api);
 const storyService = new StoryService(api);
+const taskService = new TaskService(api);
 
 api.seed();
 
 function refresh(): void {
+	const activeProjectId = api.getActiveProjectId();
+	const activeProjectStories = storyService.getStoriesForActiveProject();
+	const activeProjectTasks = activeProjectId
+		? taskService.getTasksByProjectId(activeProjectId)
+		: [];
+
 	renderApp({
 		user: userSession.getLoggedUser(),
 		projects: api.getProjects(),
-		activeProjectId: api.getActiveProjectId(),
-		stories: storyService.getStoriesForActiveProject(),
+		activeProjectId,
+		stories: activeProjectStories,
+		tasks: activeProjectTasks,
+		assignableUsers: taskService.getAssignableUsers(),
 	});
-
 	bindEvents();
 }
 
-function resetForm(): void {
+function resetStoryForm(): void {
 	const form = document.querySelector<HTMLFormElement>("#storyForm");
 	const editingStoryId =
 		document.querySelector<HTMLInputElement>("#editingStoryId");
@@ -50,7 +65,7 @@ function resetForm(): void {
 	}
 }
 
-function fillFormForEdit(story: Story): void {
+function fillStoryFormForEdit(story: Story): void {
 	const editingStoryId =
 		document.querySelector<HTMLInputElement>("#editingStoryId");
 	const nameInput = document.querySelector<HTMLInputElement>("#name");
@@ -95,6 +110,102 @@ function fillFormForEdit(story: Story): void {
 	if (cancelEditButton) {
 		cancelEditButton.hidden = false;
 	}
+
+	document.querySelector("#storyForm")?.scrollIntoView({
+		behavior: "smooth",
+		block: "start",
+	});
+}
+
+function resetTaskForm(): void {
+	const form = document.querySelector<HTMLFormElement>("#taskForm");
+	const editingTaskId =
+		document.querySelector<HTMLInputElement>("#editingTaskId");
+	const formTitle = document.querySelector<HTMLElement>("#taskFormTitle");
+	const submitButton =
+		document.querySelector<HTMLButtonElement>("#taskSubmitButton");
+	const cancelEditButton = document.querySelector<HTMLButtonElement>(
+		"#cancelTaskEditButton",
+	);
+
+	form?.reset();
+
+	if (editingTaskId) {
+		editingTaskId.value = "";
+	}
+
+	if (formTitle) {
+		formTitle.textContent = "Dodaj zadanie";
+	}
+
+	if (submitButton) {
+		submitButton.textContent = "Dodaj zadanie";
+	}
+
+	if (cancelEditButton) {
+		cancelEditButton.hidden = true;
+	}
+}
+
+function fillTaskFormForEdit(task: Task): void {
+	const editingTaskId =
+		document.querySelector<HTMLInputElement>("#editingTaskId");
+	const nameInput = document.querySelector<HTMLInputElement>("#taskName");
+	const descriptionInput =
+		document.querySelector<HTMLTextAreaElement>("#taskDescription");
+	const priorityInput =
+		document.querySelector<HTMLSelectElement>("#taskPriority");
+	const estimatedHoursInput = document.querySelector<HTMLInputElement>(
+		"#taskEstimatedHours",
+	);
+	const storyInput = document.querySelector<HTMLSelectElement>("#taskStoryId");
+	const formTitle = document.querySelector<HTMLElement>("#taskFormTitle");
+	const submitButton =
+		document.querySelector<HTMLButtonElement>("#taskSubmitButton");
+	const cancelEditButton = document.querySelector<HTMLButtonElement>(
+		"#cancelTaskEditButton",
+	);
+
+	if (editingTaskId) {
+		editingTaskId.value = task.id;
+	}
+
+	if (nameInput) {
+		nameInput.value = task.name;
+	}
+
+	if (descriptionInput) {
+		descriptionInput.value = task.description ?? "";
+	}
+
+	if (priorityInput) {
+		priorityInput.value = task.priority;
+	}
+
+	if (estimatedHoursInput) {
+		estimatedHoursInput.value = String(task.estimatedHours);
+	}
+
+	if (storyInput) {
+		storyInput.value = task.storyId;
+	}
+
+	if (formTitle) {
+		formTitle.textContent = "Edytuj zadanie";
+	}
+
+	if (submitButton) {
+		submitButton.textContent = "Zapisz zadanie";
+	}
+
+	if (cancelEditButton) {
+		cancelEditButton.hidden = false;
+	}
+
+	document.querySelector("#taskForm")?.scrollIntoView({
+		behavior: "smooth",
+		block: "start",
+	});
 }
 
 function bindEvents(): void {
@@ -103,6 +214,11 @@ function bindEvents(): void {
 	const storyForm = document.querySelector<HTMLFormElement>("#storyForm");
 	const cancelEditButton =
 		document.querySelector<HTMLButtonElement>("#cancelEditButton");
+
+	const taskForm = document.querySelector<HTMLFormElement>("#taskForm");
+	const cancelTaskEditButton = document.querySelector<HTMLButtonElement>(
+		"#cancelTaskEditButton",
+	);
 
 	projectSelect?.addEventListener("change", (event) => {
 		const target = event.target as HTMLSelectElement;
@@ -161,7 +277,7 @@ function bindEvents(): void {
 
 			storyService.updateStory(updatedStory);
 			refresh();
-			resetForm();
+			resetStoryForm();
 			return;
 		}
 
@@ -174,11 +290,75 @@ function bindEvents(): void {
 		});
 
 		refresh();
-		resetForm();
+		resetStoryForm();
+	});
+
+	taskForm?.addEventListener("submit", (event) => {
+		event.preventDefault();
+
+		const editingTaskId =
+			document.querySelector<HTMLInputElement>("#editingTaskId");
+		const nameInput = document.querySelector<HTMLInputElement>("#taskName");
+		const descriptionInput =
+			document.querySelector<HTMLTextAreaElement>("#taskDescription");
+		const priorityInput =
+			document.querySelector<HTMLSelectElement>("#taskPriority");
+		const estimatedHoursInput = document.querySelector<HTMLInputElement>(
+			"#taskEstimatedHours",
+		);
+		const storyInput =
+			document.querySelector<HTMLSelectElement>("#taskStoryId");
+
+		if (
+			!editingTaskId ||
+			!nameInput ||
+			!descriptionInput ||
+			!priorityInput ||
+			!estimatedHoursInput ||
+			!storyInput
+		) {
+			return;
+		}
+
+		const name = nameInput.value.trim();
+		const description = descriptionInput.value.trim();
+		const estimatedHours = Number(estimatedHoursInput.value);
+
+		if (!name || !storyInput.value || Number.isNaN(estimatedHours)) {
+			return;
+		}
+
+		if (editingTaskId.value) {
+			taskService.updateTask(editingTaskId.value, {
+				name,
+				description,
+				priority: priorityInput.value as TaskPriority,
+				estimatedHours,
+			});
+
+			refresh();
+			resetTaskForm();
+			return;
+		}
+
+		taskService.createTask({
+			name,
+			description,
+			priority: priorityInput.value as TaskPriority,
+			storyId: storyInput.value,
+			estimatedHours,
+		});
+
+		refresh();
+		resetTaskForm();
 	});
 
 	cancelEditButton?.addEventListener("click", () => {
-		resetForm();
+		resetStoryForm();
+	});
+
+	cancelTaskEditButton?.addEventListener("click", () => {
+		resetTaskForm();
 	});
 
 	document
@@ -195,7 +375,7 @@ function bindEvents(): void {
 				if (action === "delete") {
 					storyService.deleteStory(storyId);
 					refresh();
-					resetForm();
+					resetStoryForm();
 					return;
 				}
 
@@ -224,8 +404,66 @@ function bindEvents(): void {
 						return;
 					}
 
-					fillFormForEdit(story);
+					fillStoryFormForEdit(story);
 				}
+			});
+		});
+
+	document
+		.querySelectorAll<HTMLButtonElement>("[data-task-action]")
+		.forEach((button) => {
+			button.addEventListener("click", () => {
+				const action = button.dataset.taskAction;
+				const taskId = button.dataset.taskId;
+
+				if (!taskId || !action) {
+					return;
+				}
+
+				if (action === "delete") {
+					taskService.deleteTask(taskId);
+					refresh();
+					resetTaskForm();
+					return;
+				}
+
+				if (action === "edit") {
+					const task = taskService.getTaskById(taskId);
+
+					if (!task) {
+						return;
+					}
+
+					fillTaskFormForEdit(task);
+					return;
+				}
+
+				if (action === "done") {
+					taskService.markTaskAsDone(taskId);
+					refresh();
+					return;
+				}
+
+				if (action === "todo") {
+					taskService.moveTaskToTodo(taskId);
+					refresh();
+				}
+			});
+		});
+
+	document
+		.querySelectorAll<HTMLSelectElement>("[data-assign-task]")
+		.forEach((select) => {
+			select.addEventListener("change", () => {
+				const taskId = select.dataset.taskId;
+				const userId = select.value;
+
+				if (!taskId || !userId) {
+					return;
+				}
+
+				taskService.assignUserToTask(taskId, userId);
+				refresh();
 			});
 		});
 }
