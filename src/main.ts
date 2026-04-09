@@ -209,6 +209,7 @@ function fillTaskFormForEdit(task: Task): void {
 }
 
 function bindEvents(): void {
+	const themeToggle = document.querySelector<HTMLButtonElement>("#themeToggle");
 	const projectSelect =
 		document.querySelector<HTMLSelectElement>("#projectSelect");
 	const storyForm = document.querySelector<HTMLFormElement>("#storyForm");
@@ -219,6 +220,14 @@ function bindEvents(): void {
 	const cancelTaskEditButton = document.querySelector<HTMLButtonElement>(
 		"#cancelTaskEditButton",
 	);
+
+	themeToggle?.addEventListener("click", () => {
+		const currentTheme = document.documentElement.getAttribute("data-bs-theme");
+		const nextTheme = currentTheme === "dark" ? "light" : "dark";
+
+		localStorage.setItem(THEME_KEY, nextTheme);
+		applyTheme(nextTheme);
+	});
 
 	projectSelect?.addEventListener("change", (event) => {
 		const target = event.target as HTMLSelectElement;
@@ -468,4 +477,34 @@ function bindEvents(): void {
 		});
 }
 
+const THEME_KEY = "app-theme";
+
+function getPreferredTheme(): "light" | "dark" {
+	const savedTheme = localStorage.getItem(THEME_KEY);
+
+	if (savedTheme === "light" || savedTheme === "dark") {
+		return savedTheme;
+	}
+
+	return window.matchMedia("(prefers-color-scheme: dark)").matches
+		? "dark"
+		: "light";
+}
+
+function applyTheme(theme: "light" | "dark"): void {
+	document.documentElement.setAttribute("data-bs-theme", theme);
+
+	const button = document.querySelector<HTMLButtonElement>("#themeToggle");
+	if (!button) {
+		return;
+	}
+
+	button.textContent = theme === "dark" ? "Light mode" : "Dark mode";
+}
+
+function initTheme(): void {
+	applyTheme(getPreferredTheme());
+}
+
+initTheme();
 refresh();

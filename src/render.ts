@@ -165,24 +165,26 @@ export function renderApp(params: {
 		params;
 
 	app.innerHTML = `
-    <header class="topbar">
-      <div>
-        <h1>Project Board</h1>
-        <p>
-          Zalogowany użytkownik:
-          <strong>
-            ${
-							user
-								? `${escapeHtml(user.firstName)} ${escapeHtml(user.lastName)} (${escapeHtml(user.role)})`
-								: "Brak"
-						}
-          </strong>
-        </p>
-      </div>
+    <header class="topbar card shadow-sm border-0 mb-4">
+  <div class="card-body topbar-inner">
+    <div>
+      <h1 class="mb-2">Project Board</h1>
+      <p class="mb-0">
+        Zalogowany użytkownik:
+        <strong>
+          ${
+						user
+							? `${escapeHtml(user.firstName)} ${escapeHtml(user.lastName)} (${escapeHtml(user.role)})`
+							: "Brak"
+					}
+        </strong>
+      </p>
+    </div>
 
+    <div class="topbar-actions">
       <div class="project-picker">
-        <label for="projectSelect">Aktywny projekt:</label>
-        <select id="projectSelect">
+        <label for="projectSelect" class="form-label mb-1">Aktywny projekt:</label>
+        <select id="projectSelect" class="form-select">
           ${projects
 						.map(
 							(project) => `
@@ -194,10 +196,16 @@ export function renderApp(params: {
 						.join("")}
         </select>
       </div>
-    </header>
 
-    <section class="forms-grid">
-      <section class="story-form-section">
+      <button type="button" id="themeToggle" class="btn btn-outline-secondary">
+         Dark mode
+      </button>
+    </div>
+  </div>
+</header>
+
+    <section class="forms-grid mb-4">
+      <section class="story-form-section card shadow-sm border-0">
         <h2 id="formTitle">Dodaj historyjkę</h2>
         <form id="storyForm" class="story-form">
           <input type="hidden" id="editingStoryId" value="" />
@@ -224,7 +232,8 @@ export function renderApp(params: {
         </form>
       </section>
 
-      <section class="task-form-section">
+      <section class="task-form-section card shadow-sm border-0">
+      <div class="card-body">
         <h2 id="taskFormTitle">Dodaj zadanie</h2>
         <form id="taskForm" class="task-form">
           <input type="hidden" id="editingTaskId" value="" />
@@ -262,6 +271,7 @@ export function renderApp(params: {
             <button type="button" id="cancelTaskEditButton" hidden>Anuluj</button>
           </div>
         </form>
+        </div>
       </section>
     </section>
 
