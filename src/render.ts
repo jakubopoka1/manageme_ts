@@ -1,4 +1,5 @@
 import type {
+	Notification,
 	Project,
 	Story,
 	StoryStatus,
@@ -26,6 +27,17 @@ function formatDate(value: string | null): string {
 
 function getUserLabel(user: User): string {
 	return `${user.firstName} ${user.lastName} (${user.role})`;
+}
+
+function getPriorityLabel(priority: string): string {
+	switch (priority) {
+		case "high":
+			return "Wysoki";
+		case "medium":
+			return "Średni";
+		default:
+			return "Niski";
+	}
 }
 
 function storyCard(story: Story): string {
@@ -147,6 +159,85 @@ function renderTaskColumn(
   `;
 }
 
+function renderNotificationList(
+	notifications: Notification[],
+	selectedNotificationId: string | null,
+): string {
+	if (notifications.length === 0) {
+		return "<p>Brak powiadomień.</p>";
+	}
+
+	return `
+		<div class="notifications-list">
+			${notifications
+				.map(
+					(notification) => `
+						<article class="notification-card ${notification.priority} ${notification.isRead ? "read" : "unread"} ${selectedNotificationId === notification.id ? "active" : ""}">
+							<div class="notification-card-top">
+								<h3>${escapeHtml(notification.title)}</h3>
+								<span class="notification-priority ${notification.priority}">${getPriorityLabel(notification.priority)}</span>
+							</div>
+							<p>${escapeHtml(notification.message)}</p>
+							<p><strong>Data:</strong> ${formatDate(notification.date)}</p>
+							<p><strong>Status:</strong> ${notification.isRead ? "Przeczytane" : "Nieprzeczytane"}</p>
+							<div class="notification-actions">
+								<button data-notification-open="${notification.id}">Szczegóły</button>
+								${!notification.isRead ? `<button data-notification-read="${notification.id}">Oznacz jako przeczytane</button>` : ""}
+							</div>
+						</article>
+					`,
+				)
+				.join("")}
+		</div>
+	`;
+}
+
+function renderNotificationDetails(
+	selectedNotification: Notification | null,
+): string {
+	if (!selectedNotification) {
+		return `
+			<div class="notification-details-empty">
+				<p>Wybierz powiadomienie z listy, aby zobaczyć szczegóły.</p>
+			</div>
+		`;
+	}
+
+	return `
+		<article class="notification-details-card ${selectedNotification.priority}">
+			<h3>${escapeHtml(selectedNotification.title)}</h3>
+			<p>${escapeHtml(selectedNotification.message)}</p>
+			<p><strong>Priorytet:</strong> ${getPriorityLabel(selectedNotification.priority)}</p>
+			<p><strong>Data utworzenia:</strong> ${formatDate(selectedNotification.date)}</p>
+			<p><strong>Status:</strong> ${selectedNotification.isRead ? "Przeczytane" : "Nieprzeczytane"}</p>
+			<div class="notification-actions">
+				${!selectedNotification.isRead ? `<button data-notification-read="${selectedNotification.id}">Oznacz jako przeczytane</button>` : ""}
+				<button data-notification-clear-details="true">Zamknij szczegóły</button>
+			</div>
+		</article>
+	`;
+}
+
+function renderNotificationModal(notification: Notification | null): string {
+	if (!notification) {
+		return "";
+	}
+
+	return `
+		<div class="notification-modal-overlay">
+			<div class="notification-modal-card ${notification.priority}">
+				<h3>${escapeHtml(notification.title)}</h3>
+				<p>${escapeHtml(notification.message)}</p>
+				<p><strong>Priorytet:</strong> ${getPriorityLabel(notification.priority)}</p>
+				<div class="notification-actions">
+					<button data-notification-open="${notification.id}">Przejdź do powiadomienia</button>
+					<button data-notification-close-modal="true">Zamknij</button>
+				</div>
+			</div>
+		</div>
+	`;
+}
+
 export function renderApp(params: {
 	user: User | null;
 	projects: Project[];
@@ -154,6 +245,11 @@ export function renderApp(params: {
 	stories: Story[];
 	tasks: Task[];
 	assignableUsers: User[];
+	notifications: Notification[];
+	selectedNotificationId: string | null;
+	unreadNotificationsCount: number;
+	activeNotification: Notification | null;
+	modalNotification: Notification | null;
 }): void {
 	const app = document.querySelector<HTMLDivElement>("#app");
 
@@ -161,8 +257,19 @@ export function renderApp(params: {
 		return;
 	}
 
-	const { user, projects, activeProjectId, stories, tasks, assignableUsers } =
-		params;
+	const {
+		user,
+		projects,
+		activeProjectId,
+		stories,
+		tasks,
+		assignableUsers,
+		notifications,
+		selectedNotificationId,
+		unreadNotificationsCount,
+		activeNotification,
+		modalNotification,
+	} = params;
 
 	app.innerHTML = `
     <header class="topbar card shadow-sm border-0 mb-4">
@@ -179,9 +286,19 @@ export function renderApp(params: {
 					}
         </strong>
       </p>
+      <nav class="top-nav">
+        <a href="#storiesSection">Historyjki</a>
+        <a href="#tasksSection">Zadania</a>
+        <a href="#notificationsSection">Powiadomienia</a>
+      </nav>
     </div>
 
     <div class="topbar-actions">
+      <a href="#notificationsSection" class="notifications-link">
+        Powiadomienia
+        <span class="notification-badge">${unreadNotificationsCount}</span>
+      </a>
+
       <div class="project-picker">
         <label for="projectSelect" class="form-label mb-1">Aktywny projekt:</label>
         <select id="projectSelect" class="form-select">
@@ -206,6 +323,7 @@ export function renderApp(params: {
 
     <section class="forms-grid mb-4">
       <section class="story-form-section card shadow-sm border-0">
+        <div class="card-body">
         <h2 id="formTitle">Dodaj historyjkę</h2>
         <form id="storyForm" class="story-form">
           <input type="hidden" id="editingStoryId" value="" />
@@ -230,6 +348,7 @@ export function renderApp(params: {
             <button type="button" id="cancelEditButton" hidden>Anuluj</button>
           </div>
         </form>
+        </div>
       </section>
 
       <section class="task-form-section card shadow-sm border-0">
@@ -275,7 +394,7 @@ export function renderApp(params: {
       </section>
     </section>
 
-    <section class="board-section">
+    <section class="board-section" id="storiesSection">
       <h2>Tablica historyjek</h2>
       <main class="board">
         ${renderStoryColumn("Czekające", "todo", stories)}
@@ -284,7 +403,7 @@ export function renderApp(params: {
       </main>
     </section>
 
-    <section class="board-section">
+    <section class="board-section" id="tasksSection">
       <h2>Tablica zadań</h2>
       <main class="board">
         ${renderTaskColumn("Czekające", "todo", tasks, stories, assignableUsers)}
@@ -292,5 +411,23 @@ export function renderApp(params: {
         ${renderTaskColumn("Zamknięte", "done", tasks, stories, assignableUsers)}
       </main>
     </section>
+
+    <section class="board-section" id="notificationsSection">
+      <div class="notifications-header">
+        <h2>Powiadomienia</h2>
+        <button type="button" data-mark-all-notifications-read="true">Oznacz wszystkie jako przeczytane</button>
+      </div>
+      <div class="notifications-layout">
+        <div>
+          ${renderNotificationList(notifications, selectedNotificationId)}
+        </div>
+        <div>
+          <h3>Szczegóły powiadomienia</h3>
+          ${renderNotificationDetails(activeNotification)}
+        </div>
+      </div>
+    </section>
+
+    ${renderNotificationModal(modalNotification)}
   `;
 }

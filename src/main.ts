@@ -1,9 +1,11 @@
 import { ApiService } from "./api";
+import { NotificationService } from "./notification-service";
 import { renderApp } from "./render";
 import { StoryService } from "./story-service";
 import { TaskService } from "./task-service";
 import { UserSession } from "./user-session";
 import type {
+	Notification,
 	Story,
 	StoryPriority,
 	StoryStatus,
@@ -15,8 +17,19 @@ const api = new ApiService();
 const userSession = new UserSession(api);
 const storyService = new StoryService(api);
 const taskService = new TaskService(api);
+const notificationService = new NotificationService();
+
+let selectedNotificationId: string | null = null;
+let modalNotificationId: string | null = null;
 
 api.seed();
+notificationService.seed(api.getUsers());
+
+function maybeShowModal(notification: Notification): void {
+	if (notification.priority === "medium" || notification.priority === "high") {
+		modalNotificationId = notification.id;
+	}
+}
 
 function refresh(): void {
 	const activeProjectId = api.getActiveProjectId();
@@ -24,14 +37,31 @@ function refresh(): void {
 	const activeProjectTasks = activeProjectId
 		? taskService.getTasksByProjectId(activeProjectId)
 		: [];
+	const loggedUser = userSession.getLoggedUser();
+	const notifications = loggedUser
+		? notificationService.getNotificationsForUser(loggedUser.id)
+		: [];
+	const activeNotification = selectedNotificationId
+		? notificationService.getNotificationById(selectedNotificationId)
+		: null;
+	const modalNotification = modalNotificationId
+		? notificationService.getNotificationById(modalNotificationId)
+		: null;
 
 	renderApp({
-		user: userSession.getLoggedUser(),
+		user: loggedUser,
 		projects: api.getProjects(),
 		activeProjectId,
 		stories: activeProjectStories,
 		tasks: activeProjectTasks,
 		assignableUsers: taskService.getAssignableUsers(),
+		notifications,
+		selectedNotificationId,
+		unreadNotificationsCount: loggedUser
+			? notificationService.getUnreadCount(loggedUser.id)
+			: 0,
+		activeNotification,
+		modalNotification,
 	});
 	bindEvents();
 }
@@ -350,13 +380,28 @@ function bindEvents(): void {
 			return;
 		}
 
-		taskService.createTask({
+		const newTask = taskService.createTask({
 			name,
 			description,
 			priority: priorityInput.value as TaskPriority,
 			storyId: storyInput.value,
 			estimatedHours,
 		});
+
+		const story = api.getStoryById(newTask.storyId);
+		if (story) {
+			const notification = notificationService.createNotification({
+				title: "Nowe zadanie w historyjce",
+				message: `Do historyjki "${story.name}" dodano zadanie "${newTask.name}".`,
+				priority: "medium",
+				recipientId: story.ownerId,
+			});
+
+			const loggedUser = userSession.getLoggedUser();
+			if (loggedUser?.id === story.ownerId) {
+				maybeShowModal(notification);
+			}
+		}
 
 		refresh();
 		resetTaskForm();
@@ -430,6 +475,23 @@ function bindEvents(): void {
 				}
 
 				if (action === "delete") {
+					const task = taskService.getTaskById(taskId);
+					if (task) {
+						const story = api.getStoryById(task.storyId);
+						if (story) {
+							const notification = notificationService.createNotification({
+								title: "Usunięto zadanie z historyjki",
+								message: `Z historyjki "${story.name}" usunięto zadanie "${task.name}".`,
+								priority: "medium",
+								recipientId: story.ownerId,
+							});
+							const loggedUser = userSession.getLoggedUser();
+							if (loggedUser?.id === story.ownerId) {
+								maybeShowModal(notification);
+							}
+						}
+					}
+
 					taskService.deleteTask(taskId);
 					refresh();
 					resetTaskForm();
@@ -448,13 +510,41 @@ function bindEvents(): void {
 				}
 
 				if (action === "done") {
+					const task = taskService.getTaskById(taskId);
 					taskService.markTaskAsDone(taskId);
+					if (task) {
+						const story = api.getStoryById(task.storyId);
+						if (story) {
+							const notification = notificationService.createNotification({
+								title: "Zmiana statusu zadania w historyjce",
+								message: `Zadanie "${task.name}" w historyjce "${story.name}" zmieniło status na "done".`,
+								priority: "medium",
+								recipientId: story.ownerId,
+							});
+							const loggedUser = userSession.getLoggedUser();
+							if (loggedUser?.id === story.ownerId) {
+								maybeShowModal(notification);
+							}
+						}
+					}
 					refresh();
 					return;
 				}
 
 				if (action === "todo") {
+					const task = taskService.getTaskById(taskId);
 					taskService.moveTaskToTodo(taskId);
+					if (task) {
+						const story = api.getStoryById(task.storyId);
+						if (story) {
+							notificationService.createNotification({
+								title: "Zmiana statusu zadania w historyjce",
+								message: `Zadanie "${task.name}" w historyjce "${story.name}" wróciło do statusu "todo".`,
+								priority: "low",
+								recipientId: story.ownerId,
+							});
+						}
+					}
 					refresh();
 				}
 			});
@@ -471,9 +561,95 @@ function bindEvents(): void {
 					return;
 				}
 
+				const task = taskService.getTaskById(taskId);
 				taskService.assignUserToTask(taskId, userId);
+				const updatedTask = taskService.getTaskById(taskId);
+				const assignedUser = api.getUsers().find((user) => user.id === userId);
+				if (task && updatedTask && assignedUser) {
+					const story = api.getStoryById(task.storyId);
+					const assignmentNotification = notificationService.createNotification(
+						{
+							title: "Przypisanie do zadania",
+							message: `Zostałeś przypisany do zadania "${updatedTask.name}".`,
+							priority: "high",
+							recipientId: assignedUser.id,
+						},
+					);
+					const loggedUser = userSession.getLoggedUser();
+					if (loggedUser?.id === assignedUser.id) {
+						maybeShowModal(assignmentNotification);
+					}
+
+					if (story) {
+						notificationService.createNotification({
+							title: "Zmiana statusu zadania w historyjce",
+							message: `Zadanie "${updatedTask.name}" w historyjce "${story.name}" zmieniło status na "doing".`,
+							priority: "low",
+							recipientId: story.ownerId,
+						});
+					}
+				}
 				refresh();
 			});
+		});
+
+	document
+		.querySelectorAll<HTMLButtonElement>("[data-notification-open]")
+		.forEach((button) => {
+			button.addEventListener("click", () => {
+				const notificationId = button.dataset.notificationOpen;
+				if (!notificationId) {
+					return;
+				}
+
+				selectedNotificationId = notificationId;
+				notificationService.markAsRead(notificationId);
+				modalNotificationId = null;
+				refresh();
+				document
+					.querySelector("#notificationsSection")
+					?.scrollIntoView({ behavior: "smooth", block: "start" });
+			});
+		});
+
+	document
+		.querySelectorAll<HTMLButtonElement>("[data-notification-read]")
+		.forEach((button) => {
+			button.addEventListener("click", () => {
+				const notificationId = button.dataset.notificationRead;
+				if (!notificationId) {
+					return;
+				}
+
+				notificationService.markAsRead(notificationId);
+				refresh();
+			});
+		});
+
+	document
+		.querySelector<HTMLButtonElement>("[data-mark-all-notifications-read]")
+		?.addEventListener("click", () => {
+			const loggedUser = userSession.getLoggedUser();
+			if (!loggedUser) {
+				return;
+			}
+
+			notificationService.markAllAsReadForUser(loggedUser.id);
+			refresh();
+		});
+
+	document
+		.querySelector<HTMLButtonElement>("[data-notification-clear-details]")
+		?.addEventListener("click", () => {
+			selectedNotificationId = null;
+			refresh();
+		});
+
+	document
+		.querySelector<HTMLButtonElement>("[data-notification-close-modal]")
+		?.addEventListener("click", () => {
+			modalNotificationId = null;
+			refresh();
 		});
 }
 
