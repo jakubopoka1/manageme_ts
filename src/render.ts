@@ -44,7 +44,7 @@ function renderLoginView(): string {
 	return `
 		<section class="auth-card card shadow-sm border-0">
 			<div class="card-body text-center">
-				<h1>Project Board</h1>
+				<h1>ManageMe</h1>
 				<p>Zaloguj się kontem Google, aby wejść do aplikacji.</p>
 				<div id="googleLoginButton" class="d-flex justify-content-center"></div>
 			</div>
@@ -405,7 +405,7 @@ export function renderApp(params: {
 		<header class="topbar card shadow-sm border-0 mb-4">
 			<div class="card-body topbar-inner">
 				<div>
-					<h1 class="mb-2">Project Board</h1>
+					<h1 class="mb-2">ManageMe</h1>
 					<p class="mb-0">
 						Zalogowany użytkownik:
 						<strong>
@@ -530,7 +530,7 @@ export function renderApp(params: {
 		<section class="board-section" id="storiesSection">
 			<h2>Tablica historyjek</h2>
 			<main class="board">
-				${renderStoryColumn("Czekające", "todo", stories)}
+				${renderStoryColumn("Oczekujące", "todo", stories)}
 				${renderStoryColumn("W trakcie", "doing", stories)}
 				${renderStoryColumn("Zamknięte", "done", stories)}
 			</main>
@@ -539,7 +539,7 @@ export function renderApp(params: {
 		<section class="board-section" id="tasksSection">
 			<h2>Tablica zadań</h2>
 			<main class="board">
-				${renderTaskColumn("Czekające", "todo", tasks, stories, assignableUsers)}
+				${renderTaskColumn("Oczekujące", "todo", tasks, stories, assignableUsers)}
 				${renderTaskColumn("W trakcie", "doing", tasks, stories, assignableUsers)}
 				${renderTaskColumn("Zamknięte", "done", tasks, stories, assignableUsers)}
 			</main>

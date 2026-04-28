@@ -1,4 +1,5 @@
-import { SUPER_ADMIN_EMAIL } from "./config";
+import { SUPER_ADMIN_EMAIL, STORAGE_PROVIDER } from "./config";
+import { supabase } from "./supabase-client";
 import type { GoogleProfile } from "./auth-service";
 import type { Project, Story, Task, User, UserRole } from "./types";
 
@@ -13,26 +14,46 @@ type Database = {
 
 const STORAGE_KEY = "kanban_app_db";
 
+const initialDb: Database = {
+	users: [],
+	projects: [],
+	stories: [],
+	tasks: [],
+	activeProjectId: null,
+	loggedUserId: null,
+};
+
 export class ApiService {
-	private readDb(): Database {
-		const raw = localStorage.getItem(STORAGE_KEY);
+	private db: Database = initialDb;
 
-		const initialDb: Database = {
-			users: [],
-			projects: [],
-			stories: [],
-			tasks: [],
-			activeProjectId: null,
-			loggedUserId: null,
-		};
-
-		if (!raw) {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify(initialDb));
-			return initialDb;
+	async init(): Promise<void> {
+		if (STORAGE_PROVIDER === "localStorage") {
+			this.db = this.readFromLocalStorage();
+			return;
 		}
 
-		const parsed = JSON.parse(raw) as Partial<Database>;
+		const { data, error } = await supabase
+			.from("app_storage")
+			.select("data")
+			.eq("key", STORAGE_KEY)
+			.maybeSingle();
 
+		if (error) {
+			console.error("Supabase read error:", error);
+			this.db = initialDb;
+			return;
+		}
+
+		if (!data) {
+			this.db = initialDb;
+			await this.save();
+			return;
+		}
+
+		this.db = this.normalizeDb(data.data as Partial<Database>);
+	}
+
+	private normalizeDb(parsed: Partial<Database>): Database {
 		return {
 			users: (parsed.users ?? []).map((user) => ({
 				...user,
@@ -49,44 +70,61 @@ export class ApiService {
 		};
 	}
 
-	private writeDb(db: Database): void {
-		localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+	private readFromLocalStorage(): Database {
+		const raw = localStorage.getItem(STORAGE_KEY);
+
+		if (!raw) {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(initialDb));
+			return initialDb;
+		}
+
+		return this.normalizeDb(JSON.parse(raw) as Partial<Database>);
 	}
 
-	seed(): void {
-		const db = this.readDb();
-
-		if (db.projects.length > 0) {
+	private async save(): Promise<void> {
+		if (STORAGE_PROVIDER === "localStorage") {
+			localStorage.setItem(STORAGE_KEY, JSON.stringify(this.db));
 			return;
 		}
 
-		const project1: Project = {
+		const { error } = await supabase.from("app_storage").upsert({
+			key: STORAGE_KEY,
+			data: this.db,
+		});
+
+		if (error) {
+			console.error("Supabase save error:", error);
+		}
+	}
+
+	seed(): void {
+		if (this.db.projects.length > 0) {
+			return;
+		}
+
+		const project: Project = {
 			id: crypto.randomUUID(),
-			name: "Projekt Rekrutacja",
+			name: "ManageMe",
 		};
 
-		const project2: Project = {
-			id: crypto.randomUUID(),
-			name: "Projekt Sklep",
-		};
+		this.db.projects = [project];
+		this.db.activeProjectId = project.id;
 
-		db.projects = [project1, project2];
-		db.activeProjectId = project1.id;
-
-		this.writeDb(db);
+		void this.save();
 	}
 
 	getLoggedUser(): User | null {
-		const db = this.readDb();
-		return db.users.find((u) => u.id === db.loggedUserId) ?? null;
+		return (
+			this.db.users.find((user) => user.id === this.db.loggedUserId) ?? null
+		);
 	}
 
 	getUsers(): User[] {
-		return this.readDb().users;
+		return this.db.users;
 	}
 
 	getAssignableUsers(): User[] {
-		return this.readDb().users.filter(
+		return this.db.users.filter(
 			(user) =>
 				!user.isBlocked &&
 				(user.role === "developer" || user.role === "devops"),
@@ -97,13 +135,13 @@ export class ApiService {
 		user: User;
 		isNewUser: boolean;
 	} {
-		const db = this.readDb();
-
-		const existingUser = db.users.find((user) => user.email === profile.email);
+		const existingUser = this.db.users.find(
+			(user) => user.email === profile.email,
+		);
 
 		if (existingUser) {
-			db.loggedUserId = existingUser.id;
-			this.writeDb(db);
+			this.db.loggedUserId = existingUser.id;
+			void this.save();
 
 			return {
 				user: existingUser,
@@ -125,10 +163,10 @@ export class ApiService {
 			createdAt: new Date().toISOString(),
 		};
 
-		db.users.push(newUser);
-		db.loggedUserId = newUser.id;
+		this.db.users.push(newUser);
+		this.db.loggedUserId = newUser.id;
 
-		this.writeDb(db);
+		void this.save();
 
 		return {
 			user: newUser,
@@ -137,15 +175,12 @@ export class ApiService {
 	}
 
 	logout(): void {
-		const db = this.readDb();
-		db.loggedUserId = null;
-		this.writeDb(db);
+		this.db.loggedUserId = null;
+		void this.save();
 	}
 
 	updateUserRole(userId: string, role: UserRole): void {
-		const db = this.readDb();
-
-		db.users = db.users.map((user) =>
+		this.db.users = this.db.users.map((user) =>
 			user.id === userId
 				? {
 						...user,
@@ -154,13 +189,11 @@ export class ApiService {
 				: user,
 		);
 
-		this.writeDb(db);
+		void this.save();
 	}
 
 	setUserBlocked(userId: string, isBlocked: boolean): void {
-		const db = this.readDb();
-
-		db.users = db.users.map((user) =>
+		this.db.users = this.db.users.map((user) =>
 			user.id === userId
 				? {
 						...user,
@@ -169,128 +202,114 @@ export class ApiService {
 				: user,
 		);
 
-		this.writeDb(db);
+		void this.save();
 	}
 
 	getAdmins(): User[] {
-		return this.readDb().users.filter(
+		return this.db.users.filter(
 			(user) => user.role === "admin" && !user.isBlocked,
 		);
 	}
 
 	getProjects(): Project[] {
-		return this.readDb().projects;
+		return this.db.projects;
 	}
 
 	getActiveProjectId(): string | null {
-		return this.readDb().activeProjectId;
+		return this.db.activeProjectId;
 	}
 
 	setActiveProject(projectId: string): void {
-		const db = this.readDb();
-		db.activeProjectId = projectId;
-		this.writeDb(db);
+		this.db.activeProjectId = projectId;
+		void this.save();
 	}
 
 	getActiveProject(): Project | null {
-		const db = this.readDb();
-		return db.projects.find((p) => p.id === db.activeProjectId) ?? null;
+		return (
+			this.db.projects.find(
+				(project) => project.id === this.db.activeProjectId,
+			) ?? null
+		);
 	}
 
 	getStoriesByProject(projectId: string): Story[] {
-		const db = this.readDb();
-		return db.stories.filter((story) => story.projectId === projectId);
+		return this.db.stories.filter((story) => story.projectId === projectId);
 	}
 
 	getStoryById(storyId: string): Story | null {
-		const db = this.readDb();
-		return db.stories.find((story) => story.id === storyId) ?? null;
+		return this.db.stories.find((story) => story.id === storyId) ?? null;
 	}
 
 	createStory(story: Omit<Story, "id" | "createdAt">): Story {
-		const db = this.readDb();
-
 		const newStory: Story = {
 			...story,
 			id: crypto.randomUUID(),
 			createdAt: new Date().toISOString(),
 		};
 
-		db.stories.push(newStory);
-		this.writeDb(db);
+		this.db.stories.push(newStory);
+		void this.save();
 
 		return newStory;
 	}
 
 	updateStory(updatedStory: Story): void {
-		const db = this.readDb();
-
-		db.stories = db.stories.map((story) =>
+		this.db.stories = this.db.stories.map((story) =>
 			story.id === updatedStory.id ? updatedStory : story,
 		);
 
-		this.writeDb(db);
+		void this.save();
 	}
 
 	deleteStory(storyId: string): void {
-		const db = this.readDb();
-		db.stories = db.stories.filter((story) => story.id !== storyId);
-		db.tasks = db.tasks.filter((task) => task.storyId !== storyId);
-		this.writeDb(db);
+		this.db.stories = this.db.stories.filter((story) => story.id !== storyId);
+		this.db.tasks = this.db.tasks.filter((task) => task.storyId !== storyId);
+		void this.save();
 	}
 
 	getTasks(): Task[] {
-		return this.readDb().tasks;
+		return this.db.tasks;
 	}
 
 	getTaskById(taskId: string): Task | null {
-		const db = this.readDb();
-		return db.tasks.find((task) => task.id === taskId) ?? null;
+		return this.db.tasks.find((task) => task.id === taskId) ?? null;
 	}
 
 	getTasksByStoryId(storyId: string): Task[] {
-		const db = this.readDb();
-		return db.tasks.filter((task) => task.storyId === storyId);
+		return this.db.tasks.filter((task) => task.storyId === storyId);
 	}
 
 	getTasksByProjectId(projectId: string): Task[] {
-		const db = this.readDb();
-
-		const storyIds = db.stories
+		const storyIds = this.db.stories
 			.filter((story) => story.projectId === projectId)
 			.map((story) => story.id);
 
-		return db.tasks.filter((task) => storyIds.includes(task.storyId));
+		return this.db.tasks.filter((task) => storyIds.includes(task.storyId));
 	}
 
 	createTask(task: Omit<Task, "id" | "createdAt">): Task {
-		const db = this.readDb();
-
 		const newTask: Task = {
 			...task,
 			id: crypto.randomUUID(),
 			createdAt: new Date().toISOString(),
 		};
 
-		db.tasks.push(newTask);
-		this.writeDb(db);
+		this.db.tasks.push(newTask);
+		void this.save();
 
 		return newTask;
 	}
 
 	updateTask(updatedTask: Task): void {
-		const db = this.readDb();
-
-		db.tasks = db.tasks.map((task) =>
+		this.db.tasks = this.db.tasks.map((task) =>
 			task.id === updatedTask.id ? updatedTask : task,
 		);
 
-		this.writeDb(db);
+		void this.save();
 	}
 
 	deleteTask(taskId: string): void {
-		const db = this.readDb();
-		db.tasks = db.tasks.filter((task) => task.id !== taskId);
-		this.writeDb(db);
+		this.db.tasks = this.db.tasks.filter((task) => task.id !== taskId);
+		void this.save();
 	}
 }

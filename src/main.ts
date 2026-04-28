@@ -22,9 +22,6 @@ const notificationService = new NotificationService();
 let selectedNotificationId: string | null = null;
 let modalNotificationId: string | null = null;
 
-api.seed();
-notificationService.seed(api.getUsers());
-
 function maybeShowModal(notification: Notification): void {
 	if (notification.priority === "medium" || notification.priority === "high") {
 		modalNotificationId = notification.id;
@@ -763,5 +760,14 @@ function initTheme(): void {
 	applyTheme(getPreferredTheme());
 }
 
-initTheme();
-refresh();
+async function initApp(): Promise<void> {
+	await api.init();
+
+	api.seed();
+	notificationService.seed(api.getUsers());
+
+	initTheme();
+	refresh();
+}
+
+void initApp();
