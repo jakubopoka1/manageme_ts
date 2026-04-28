@@ -4,7 +4,7 @@ export type TaskStatus = "todo" | "doing" | "done";
 export type StoryPriority = "low" | "medium" | "high";
 export type TaskPriority = "low" | "medium" | "high";
 
-export type UserRole = "admin" | "devops" | "developer";
+export type UserRole = "admin" | "devops" | "developer" | "guest";
 
 export interface Story {
 	id: string;
@@ -35,7 +35,11 @@ export interface User {
 	id: string;
 	firstName: string;
 	lastName: string;
+	email: string;
 	role: UserRole;
+	isBlocked: boolean;
+	createdAt: string;
+	avatarUrl?: string;
 }
 
 export interface Project {

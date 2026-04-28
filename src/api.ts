@@ -1,4 +1,6 @@
-import type { Project, Story, Task, User } from "./types";
+import { SUPER_ADMIN_EMAIL } from "./config";
+import type { GoogleProfile } from "./auth-service";
+import type { Project, Story, Task, User, UserRole } from "./types";
 
 type Database = {
 	users: User[];
@@ -32,7 +34,13 @@ export class ApiService {
 		const parsed = JSON.parse(raw) as Partial<Database>;
 
 		return {
-			users: parsed.users ?? [],
+			users: (parsed.users ?? []).map((user) => ({
+				...user,
+				email: user.email ?? "",
+				role: user.role ?? "guest",
+				isBlocked: user.isBlocked ?? false,
+				createdAt: user.createdAt ?? new Date().toISOString(),
+			})),
 			projects: parsed.projects ?? [],
 			stories: parsed.stories ?? [],
 			tasks: parsed.tasks ?? [],
@@ -48,30 +56,9 @@ export class ApiService {
 	seed(): void {
 		const db = this.readDb();
 
-		if (db.users.length > 0) {
+		if (db.projects.length > 0) {
 			return;
 		}
-
-		const adminUser: User = {
-			id: crypto.randomUUID(),
-			firstName: "Johnny",
-			lastName: "Bravo",
-			role: "admin",
-		};
-
-		const developerUser: User = {
-			id: crypto.randomUUID(),
-			firstName: "Luke",
-			lastName: "Skywalker",
-			role: "developer",
-		};
-
-		const devopsUser: User = {
-			id: crypto.randomUUID(),
-			firstName: "Travis",
-			lastName: "Scott",
-			role: "devops",
-		};
 
 		const project1: Project = {
 			id: crypto.randomUUID(),
@@ -83,91 +70,10 @@ export class ApiService {
 			name: "Projekt Sklep",
 		};
 
-		const story1: Story = {
-			id: crypto.randomUUID(),
-			name: "Dodanie logowania",
-			description: "Użytkownik może zalogować się do systemu",
-			priority: "high",
-			projectId: project1.id,
-			createdAt: new Date().toISOString(),
-			status: "todo",
-			ownerId: adminUser.id,
-		};
+		db.projects = [project1, project2];
+		db.activeProjectId = project1.id;
 
-		const story2: Story = {
-			id: crypto.randomUUID(),
-			name: "Widok dashboardu",
-			description: "Po zalogowaniu użytkownik widzi dashboard",
-			priority: "medium",
-			projectId: project1.id,
-			createdAt: new Date().toISOString(),
-			status: "doing",
-			ownerId: adminUser.id,
-		};
-
-		const story3: Story = {
-			id: crypto.randomUUID(),
-			name: "Koszyk zakupowy",
-			description: "Użytkownik może dodać produkt do koszyka",
-			priority: "high",
-			projectId: project2.id,
-			createdAt: new Date().toISOString(),
-			status: "done",
-			ownerId: adminUser.id,
-		};
-
-		const task1: Task = {
-			id: crypto.randomUUID(),
-			name: "Przygotowanie formularza logowania",
-			description: "Frontend formularza logowania",
-			priority: "high",
-			storyId: story1.id,
-			estimatedHours: 8,
-			status: "todo",
-			createdAt: new Date().toISOString(),
-			startedAt: null,
-			completedAt: null,
-			assigneeId: null,
-		};
-
-		const task2: Task = {
-			id: crypto.randomUUID(),
-			name: "Konfiguracja pipeline CI",
-			description: "Przygotowanie pipeline dla projektu",
-			priority: "medium",
-			storyId: story2.id,
-			estimatedHours: 6,
-			status: "doing",
-			createdAt: new Date().toISOString(),
-			startedAt: new Date().toISOString(),
-			completedAt: null,
-			assigneeId: devopsUser.id,
-		};
-
-		const task3: Task = {
-			id: crypto.randomUUID(),
-			name: "Test koszyka zakupowego",
-			description: "Sprawdzenie poprawności dodawania produktów",
-			priority: "medium",
-			storyId: story3.id,
-			estimatedHours: 5,
-			status: "done",
-			createdAt: new Date().toISOString(),
-			startedAt: new Date().toISOString(),
-			completedAt: new Date().toISOString(),
-			assigneeId: developerUser.id,
-		};
-
-		const newDb: Database = {
-			users: [adminUser, developerUser, devopsUser],
-			projects: [project1, project2],
-			stories: [story1, story2, story3],
-			tasks: [task1, task2, task3],
-			activeProjectId: project1.id,
-			loggedUserId: adminUser.id,
-		};
-
-		this.writeDb(newDb);
+		this.writeDb(db);
 	}
 
 	getLoggedUser(): User | null {
@@ -181,7 +87,94 @@ export class ApiService {
 
 	getAssignableUsers(): User[] {
 		return this.readDb().users.filter(
-			(user) => user.role === "developer" || user.role === "devops",
+			(user) =>
+				!user.isBlocked &&
+				(user.role === "developer" || user.role === "devops"),
+		);
+	}
+
+	loginWithGoogleProfile(profile: GoogleProfile): {
+		user: User;
+		isNewUser: boolean;
+	} {
+		const db = this.readDb();
+
+		const existingUser = db.users.find((user) => user.email === profile.email);
+
+		if (existingUser) {
+			db.loggedUserId = existingUser.id;
+			this.writeDb(db);
+
+			return {
+				user: existingUser,
+				isNewUser: false,
+			};
+		}
+
+		const isSuperAdmin =
+			profile.email.toLowerCase() === SUPER_ADMIN_EMAIL.toLowerCase();
+
+		const newUser: User = {
+			id: crypto.randomUUID(),
+			firstName: profile.firstName || profile.email.split("@")[0],
+			lastName: profile.lastName || "",
+			email: profile.email,
+			avatarUrl: profile.avatarUrl,
+			role: isSuperAdmin ? "admin" : "guest",
+			isBlocked: false,
+			createdAt: new Date().toISOString(),
+		};
+
+		db.users.push(newUser);
+		db.loggedUserId = newUser.id;
+
+		this.writeDb(db);
+
+		return {
+			user: newUser,
+			isNewUser: true,
+		};
+	}
+
+	logout(): void {
+		const db = this.readDb();
+		db.loggedUserId = null;
+		this.writeDb(db);
+	}
+
+	updateUserRole(userId: string, role: UserRole): void {
+		const db = this.readDb();
+
+		db.users = db.users.map((user) =>
+			user.id === userId
+				? {
+						...user,
+						role,
+					}
+				: user,
+		);
+
+		this.writeDb(db);
+	}
+
+	setUserBlocked(userId: string, isBlocked: boolean): void {
+		const db = this.readDb();
+
+		db.users = db.users.map((user) =>
+			user.id === userId
+				? {
+						...user,
+						isBlocked,
+					}
+				: user,
+		);
+
+		this.writeDb(db);
+	}
+
+	getAdmins(): User[] {
+		return this.readDb().users.filter(
+			(user) => user.role === "admin" && !user.isBlocked,
 		);
 	}
 

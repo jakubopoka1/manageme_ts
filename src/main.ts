@@ -1,9 +1,9 @@
 import { ApiService } from "./api";
+import { initGoogleLogin } from "./auth-service";
 import { NotificationService } from "./notification-service";
 import { renderApp } from "./render";
 import { StoryService } from "./story-service";
 import { TaskService } from "./task-service";
-import { UserSession } from "./user-session";
 import type {
 	Notification,
 	Story,
@@ -11,10 +11,10 @@ import type {
 	StoryStatus,
 	Task,
 	TaskPriority,
+	UserRole,
 } from "./types";
 
 const api = new ApiService();
-const userSession = new UserSession(api);
 const storyService = new StoryService(api);
 const taskService = new TaskService(api);
 const notificationService = new NotificationService();
@@ -37,19 +37,24 @@ function refresh(): void {
 	const activeProjectTasks = activeProjectId
 		? taskService.getTasksByProjectId(activeProjectId)
 		: [];
-	const loggedUser = userSession.getLoggedUser();
+
+	const loggedUser = api.getLoggedUser();
+
 	const notifications = loggedUser
 		? notificationService.getNotificationsForUser(loggedUser.id)
 		: [];
+
 	const activeNotification = selectedNotificationId
 		? notificationService.getNotificationById(selectedNotificationId)
 		: null;
+
 	const modalNotification = modalNotificationId
 		? notificationService.getNotificationById(modalNotificationId)
 		: null;
 
 	renderApp({
 		user: loggedUser,
+		users: api.getUsers(),
 		projects: api.getProjects(),
 		activeProjectId,
 		stories: activeProjectStories,
@@ -63,6 +68,7 @@ function refresh(): void {
 		activeNotification,
 		modalNotification,
 	});
+
 	bindEvents();
 }
 
@@ -239,6 +245,61 @@ function fillTaskFormForEdit(task: Task): void {
 }
 
 function bindEvents(): void {
+	initGoogleLogin((profile) => {
+		const result = api.loginWithGoogleProfile(profile);
+
+		if (result.isNewUser) {
+			notificationService.createNotificationForAdmins(api.getAdmins(), {
+				title: "Nowe konto w systemie",
+				message: `Użytkownik ${result.user.firstName} ${result.user.lastName} (${result.user.email}) utworzył konto i oczekuje na zatwierdzenie.`,
+				priority: "high",
+			});
+		}
+
+		refresh();
+	});
+
+	document
+		.querySelector<HTMLButtonElement>("#logoutButton")
+		?.addEventListener("click", () => {
+			api.logout();
+			selectedNotificationId = null;
+			modalNotificationId = null;
+			refresh();
+		});
+
+	document
+		.querySelectorAll<HTMLSelectElement>("[data-user-role]")
+		.forEach((select) => {
+			select.addEventListener("change", () => {
+				const userId = select.dataset.userId;
+				const role = select.value as UserRole;
+
+				if (!userId) {
+					return;
+				}
+
+				api.updateUserRole(userId, role);
+				refresh();
+			});
+		});
+
+	document
+		.querySelectorAll<HTMLButtonElement>("[data-user-block]")
+		.forEach((button) => {
+			button.addEventListener("click", () => {
+				const userId = button.dataset.userId;
+				const blocked = button.dataset.blocked === "true";
+
+				if (!userId) {
+					return;
+				}
+
+				api.setUserBlocked(userId, !blocked);
+				refresh();
+			});
+		});
+
 	const themeToggle = document.querySelector<HTMLButtonElement>("#themeToggle");
 	const projectSelect =
 		document.querySelector<HTMLSelectElement>("#projectSelect");
@@ -268,7 +329,7 @@ function bindEvents(): void {
 	storyForm?.addEventListener("submit", (event) => {
 		event.preventDefault();
 
-		const loggedUser = userSession.getLoggedUser();
+		const loggedUser = api.getLoggedUser();
 		if (!loggedUser) {
 			return;
 		}
@@ -397,7 +458,7 @@ function bindEvents(): void {
 				recipientId: story.ownerId,
 			});
 
-			const loggedUser = userSession.getLoggedUser();
+			const loggedUser = api.getLoggedUser();
 			if (loggedUser?.id === story.ownerId) {
 				maybeShowModal(notification);
 			}
@@ -476,8 +537,10 @@ function bindEvents(): void {
 
 				if (action === "delete") {
 					const task = taskService.getTaskById(taskId);
+
 					if (task) {
 						const story = api.getStoryById(task.storyId);
+
 						if (story) {
 							const notification = notificationService.createNotification({
 								title: "Usunięto zadanie z historyjki",
@@ -485,7 +548,8 @@ function bindEvents(): void {
 								priority: "medium",
 								recipientId: story.ownerId,
 							});
-							const loggedUser = userSession.getLoggedUser();
+
+							const loggedUser = api.getLoggedUser();
 							if (loggedUser?.id === story.ownerId) {
 								maybeShowModal(notification);
 							}
@@ -512,8 +576,10 @@ function bindEvents(): void {
 				if (action === "done") {
 					const task = taskService.getTaskById(taskId);
 					taskService.markTaskAsDone(taskId);
+
 					if (task) {
 						const story = api.getStoryById(task.storyId);
+
 						if (story) {
 							const notification = notificationService.createNotification({
 								title: "Zmiana statusu zadania w historyjce",
@@ -521,12 +587,14 @@ function bindEvents(): void {
 								priority: "medium",
 								recipientId: story.ownerId,
 							});
-							const loggedUser = userSession.getLoggedUser();
+
+							const loggedUser = api.getLoggedUser();
 							if (loggedUser?.id === story.ownerId) {
 								maybeShowModal(notification);
 							}
 						}
 					}
+
 					refresh();
 					return;
 				}
@@ -534,8 +602,10 @@ function bindEvents(): void {
 				if (action === "todo") {
 					const task = taskService.getTaskById(taskId);
 					taskService.moveTaskToTodo(taskId);
+
 					if (task) {
 						const story = api.getStoryById(task.storyId);
+
 						if (story) {
 							notificationService.createNotification({
 								title: "Zmiana statusu zadania w historyjce",
@@ -545,6 +615,7 @@ function bindEvents(): void {
 							});
 						}
 					}
+
 					refresh();
 				}
 			});
@@ -563,10 +634,13 @@ function bindEvents(): void {
 
 				const task = taskService.getTaskById(taskId);
 				taskService.assignUserToTask(taskId, userId);
+
 				const updatedTask = taskService.getTaskById(taskId);
 				const assignedUser = api.getUsers().find((user) => user.id === userId);
+
 				if (task && updatedTask && assignedUser) {
 					const story = api.getStoryById(task.storyId);
+
 					const assignmentNotification = notificationService.createNotification(
 						{
 							title: "Przypisanie do zadania",
@@ -575,7 +649,8 @@ function bindEvents(): void {
 							recipientId: assignedUser.id,
 						},
 					);
-					const loggedUser = userSession.getLoggedUser();
+
+					const loggedUser = api.getLoggedUser();
 					if (loggedUser?.id === assignedUser.id) {
 						maybeShowModal(assignmentNotification);
 					}
@@ -589,6 +664,7 @@ function bindEvents(): void {
 						});
 					}
 				}
+
 				refresh();
 			});
 		});
@@ -598,6 +674,7 @@ function bindEvents(): void {
 		.forEach((button) => {
 			button.addEventListener("click", () => {
 				const notificationId = button.dataset.notificationOpen;
+
 				if (!notificationId) {
 					return;
 				}
@@ -606,6 +683,7 @@ function bindEvents(): void {
 				notificationService.markAsRead(notificationId);
 				modalNotificationId = null;
 				refresh();
+
 				document
 					.querySelector("#notificationsSection")
 					?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -617,6 +695,7 @@ function bindEvents(): void {
 		.forEach((button) => {
 			button.addEventListener("click", () => {
 				const notificationId = button.dataset.notificationRead;
+
 				if (!notificationId) {
 					return;
 				}
@@ -629,7 +708,8 @@ function bindEvents(): void {
 	document
 		.querySelector<HTMLButtonElement>("[data-mark-all-notifications-read]")
 		?.addEventListener("click", () => {
-			const loggedUser = userSession.getLoggedUser();
+			const loggedUser = api.getLoggedUser();
+
 			if (!loggedUser) {
 				return;
 			}
@@ -671,6 +751,7 @@ function applyTheme(theme: "light" | "dark"): void {
 	document.documentElement.setAttribute("data-bs-theme", theme);
 
 	const button = document.querySelector<HTMLButtonElement>("#themeToggle");
+
 	if (!button) {
 		return;
 	}

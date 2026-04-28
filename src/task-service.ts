@@ -94,7 +94,10 @@ export class TaskService {
 			return;
 		}
 
-		if (user.role !== "developer" && user.role !== "devops") {
+		if (
+			user.isBlocked ||
+			(user.role !== "developer" && user.role !== "devops")
+		) {
 			return;
 		}
 

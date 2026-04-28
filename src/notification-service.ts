@@ -91,6 +91,24 @@ export class NotificationService {
 		return notification;
 	}
 
+	createNotificationForAdmins(
+		admins: { id: string }[],
+		input: {
+			title: string;
+			message: string;
+			priority: NotificationPriority;
+		},
+	): void {
+		admins.forEach((admin) => {
+			this.createNotification({
+				title: input.title,
+				message: input.message,
+				priority: input.priority,
+				recipientId: admin.id,
+			});
+		});
+	}
+
 	markAsRead(notificationId: string): void {
 		const notifications = this.read();
 		const notification = notifications.find(

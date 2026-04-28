@@ -317,3 +317,21 @@ body {
 		grid-template-columns: 1fr;
 	}
 }
+
+.auth-card {
+	max-width: 620px;
+	margin: 80px auto;
+	border-radius: 18px;
+}
+
+.user-avatar {
+	width: 32px;
+	height: 32px;
+	border-radius: 999px;
+	object-fit: cover;
+	margin-right: 8px;
+}
+
+.users-table-wrapper {
+	overflow-x: auto;
+}
