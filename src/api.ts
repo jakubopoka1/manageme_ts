@@ -107,6 +107,18 @@ export class ApiService {
 			name: "ManageMe",
 		};
 
+		const admin: User = {
+			id: crypto.randomUUID(),
+			firstName: "Test",
+			lastName: "Admin",
+			email: "test@admin.pl",
+			role: "admin",
+			isBlocked: false,
+			createdAt: new Date().toISOString(),
+		};
+
+		this.db.users = [admin];
+		this.db.loggedUserId = admin.id;
 		this.db.projects = [project];
 		this.db.activeProjectId = project.id;
 
@@ -213,6 +225,55 @@ export class ApiService {
 
 	getProjects(): Project[] {
 		return this.db.projects;
+	}
+
+	createProject(name: string): Project {
+		const newProject: Project = {
+			id: crypto.randomUUID(),
+			name,
+		};
+
+		this.db.projects.push(newProject);
+		this.db.activeProjectId = newProject.id;
+
+		void this.save();
+
+		return newProject;
+	}
+
+	updateProject(projectId: string, name: string): void {
+		this.db.projects = this.db.projects.map((project) =>
+			project.id === projectId
+				? {
+						...project,
+						name,
+					}
+				: project,
+		);
+
+		void this.save();
+	}
+
+	deleteProject(projectId: string): void {
+		const storyIds = this.db.stories
+			.filter((story) => story.projectId === projectId)
+			.map((story) => story.id);
+
+		this.db.tasks = this.db.tasks.filter(
+			(task) => !storyIds.includes(task.storyId),
+		);
+
+		this.db.stories = this.db.stories.filter(
+			(story) => story.projectId !== projectId,
+		);
+
+		this.db.projects = this.db.projects.filter(
+			(project) => project.id !== projectId,
+		);
+
+		this.db.activeProjectId = this.db.projects[0]?.id ?? null;
+
+		void this.save();
 	}
 
 	getActiveProjectId(): string | null {

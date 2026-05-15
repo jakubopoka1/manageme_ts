@@ -728,6 +728,80 @@ function bindEvents(): void {
 			modalNotificationId = null;
 			refresh();
 		});
+
+	const addProjectButton =
+		document.querySelector<HTMLButtonElement>("#addProjectButton");
+
+	addProjectButton?.addEventListener("click", () => {
+		const projectNameInput =
+			document.querySelector<HTMLInputElement>("#projectName");
+
+		const name = projectNameInput?.value.trim();
+
+		if (!name) {
+			alert("Podaj nazwę projektu");
+			return;
+		}
+
+		api.createProject(name);
+
+		if (projectNameInput) {
+			projectNameInput.value = "";
+		}
+
+		refresh();
+	});
+
+	const editProjectButton =
+		document.querySelector<HTMLButtonElement>("#editProjectButton");
+
+	editProjectButton?.addEventListener("click", () => {
+		const activeProjectId = api.getActiveProjectId();
+
+		if (!activeProjectId) {
+			return;
+		}
+
+		const projectNameInput =
+			document.querySelector<HTMLInputElement>("#projectName");
+
+		const name = projectNameInput?.value.trim();
+
+		if (!name) {
+			alert("Podaj nową nazwę projektu");
+			return;
+		}
+
+		api.updateProject(activeProjectId, name);
+
+		if (projectNameInput) {
+			projectNameInput.value = "";
+		}
+
+		refresh();
+	});
+
+	const deleteProjectButton = document.querySelector<HTMLButtonElement>(
+		"#deleteProjectButton",
+	);
+
+	deleteProjectButton?.addEventListener("click", () => {
+		const activeProjectId = api.getActiveProjectId();
+
+		if (!activeProjectId) {
+			return;
+		}
+
+		const confirmed = confirm("Czy na pewno chcesz usunąć projekt?");
+
+		if (!confirmed) {
+			return;
+		}
+
+		api.deleteProject(activeProjectId);
+
+		refresh();
+	});
 }
 
 const THEME_KEY = "app-theme";

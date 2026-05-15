@@ -430,6 +430,7 @@ export function renderApp(params: {
 
 					<div class="project-picker">
 						<label for="projectSelect" class="form-label mb-1">Aktywny projekt:</label>
+
 						<select id="projectSelect" class="form-select">
 							${projects
 								.map(
@@ -441,6 +442,41 @@ export function renderApp(params: {
 								)
 								.join("")}
 						</select>
+
+						<div class="project-management mt-2">
+							<input
+								type="text"
+								id="projectName"
+								class="form-control mb-2"
+								placeholder="Nazwa projektu"
+							/>
+
+							<div class="d-flex gap-2">
+								<button
+									type="button"
+									id="addProjectButton"
+									class="btn btn-success"
+								>
+									Dodaj projekt
+								</button>
+
+								<button
+									type="button"
+									id="editProjectButton"
+									class="btn btn-warning"
+								>
+									Edytuj
+								</button>
+
+								<button
+									type="button"
+									id="deleteProjectButton"
+									class="btn btn-danger"
+								>
+									Usuń
+								</button>
+							</div>
+						</div>
 					</div>
 
 					<button type="button" id="themeToggle" class="btn btn-outline-secondary">
